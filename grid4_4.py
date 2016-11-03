@@ -1,17 +1,30 @@
+#ECSE420
+#LAB2
+#ANDONI ROMAN
+#YORDAN NESHEV
+
+#PYTHONIC DRUM 1.0
+
+
 from mpi4py import MPI
 import numpy as np
 import sys
 
-
+#GLOBALS
 GRID_SIZE = 4
-
 SIZE = GRID_SIZE * GRID_SIZE
 
+#Node dictionary containing (i,j) of node as key and [t2,t1,t] as time values for each node
 node_dict = {}
-
 size = 0
 
+#multiplicant constants
+ETA = float(0.0002)
+RHO = float(0.5)
+G =	float(0.75)
 
+#Dict that will get received by each node. Will contain all neigbouring values with their i and j
+neigbour_nodes_and_their_values = {}
 
 #Fills up all information necessary for node transactions
 #Each node will contain its position i j and an array with 4 variables
@@ -33,9 +46,9 @@ def fill_node_dict(dot_amount_per_process, rank):
                     rank_counter += 1
                     if rank_counter == rank:
                         if (i == GRID_SIZE/2) and (j == GRID_SIZE/2):
-                            node_dict[(i,j)] = [0, 0, 1]
+                            node_dict[(i,j)] = [float(0), float(0), float(1)]
                         else:
-                            node_dict[(i,j)] = [0, 0, 0]
+                            node_dict[(i,j)] = [float(0), float(0), float(0)]
     #case N=512
     else:
         offset = GRID_SIZE/size
@@ -44,9 +57,9 @@ def fill_node_dict(dot_amount_per_process, rank):
         for j in range(beginning, end):
             for i in range(0, GRID_SIZE):
                 if (i == GRID_SIZE / 2) and (j == GRID_SIZE / 2):
-                    node_dict[(i, j)] = [1, 0, 0]
+                    node_dict[(i, j)] = [float(1) float(0), float(0)]
                 else:
-                    node_dict[(i, j)] = [0, 0, 0]
+                    node_dict[(i, j)] = [float(0), float(0), float(0)]
 
 
 
@@ -54,9 +67,86 @@ def fill_node_dict(dot_amount_per_process, rank):
 #default is non but specified from calls from main. Can be: EDGE, CENTER, CORNER
 def simulate_iteration(condition = None):
 
+    #All received values from the neighbours will be stored here
+    #will always have 4 structures with  values in it:
+        #UPPER NEIGBOURS i,j as key and their array with PREV-PREV, PREV, CURRENT values
+        #LOWER NEIGBOURS i,j as key and their array with PREV-PREV, PREV, CURRENT values
+        #LEFT NEIGHBOURS i,j as key and their array with PREV-PREV, PREV, CURRENT values
+        #RIGHT NEIGHBOURS i,j as key and their array with PREV-PREV, PREV, CURRENT values
+    #depending on condition, there will be special cases (ex: corner cases)
+
+    #exchange data with neighbours code here (MPI)
+
+    #receive data from neigbours code here (MPI)
+
+    #Now update depending on condition
+    #get now list of all keys of nodes  that belong to process
+    #Based on this key list, each process will update only those nodes that belong to it
+    #So we check the key first, if its in processes pool of keys.
+    #If the key is in the pool, check the received neighbor values.
+    #Take the value (t2, t1 or t0) basing on the case (corner, middle or edges)
+    key_list = node_dict.keys()
+
+    neigbour_key_list = neigbour_nodes_and_their_values.keys()
+
+    if(condition == "CORNER"):
+        #case upper left corner. depends on previous value of node i=1,j=0
+        if (0,0) in key_list:
+            if ((1,0) in neigbour_key_list):
+                update_value = G * neigbour_key_list[(1,0)][2]
+                node_dict[(0,0)][2] = update_value
+
+        # case upper right corner. depends on previous value of node i=N-2,j=0
+        elif (GRID_SIZE-1, 0) in key_list:
+            if ((GRID_SIZE-2, 0) in neigbour_key_list):
+                update_value = G * neigbour_key_list[(GRID_SIZE-2, 0)][2]
+                node_dict[(GRID_SIZE-1, 0)][2] = update_value
+
+        # case lower  left corner. depends on previous value of node i=0,j=N-2
+        elif (0, GRID_SIZE-1) in key_list:
+            if ((0, GRID_SIZE-2) in neigbour_key_list):
+                update_value = G * neigbour_key_list[(0, GRID_SIZE-2)][2]
+                node_dict[(0,GRID_SIZE-1)][2] = update_value
+
+        # case lower right corner. depends on previous value of node i=N-1,j=N-2
+        elif (GRID_SIZE-1, GRID_SIZE-1) in key_list:
+            if ((GRID_SIZE-1, GRID_SIZE-2) in neigbour_key_list):
+                update_value = G * neigbour_key_list[(GRID_SIZE-1, GRID_SIZE-2)][2]
+                node_dict[(GRID_SIZE-1,GRID_SIZE-1)][2] = update_value
 
 
+    elif(condition == "EDGE"):
+        #left most edge case --> get all nodes with i at 0 and j starting from 1 till N-2
+        for j in range(1,GRID_SIZE-1):
+            if (0,j) in key_list:
+                if(1,j) in neigbour_key_list:
+                    update_value = G * neigbour_key_list[(1,j)][2]
+                    node_dict[(0,j)][2] = update_value
 
+        #right  most edge case --> get all nodes with i at N-1 j starting from 1 till N-2
+        for j in range(1,GRID_SIZE-1):
+            if (GRID_SIZE-1,j) in key_list:
+                if (GRID_SIZE-2,j) in neigbour_key_list:
+                    update_value = G * neigbour_key_list[(GRID_SIZE-2,j)][2]
+                    node_dict[(GRID_SIZE-1,j)][2] = update_value
+
+        #right top edge case --> get all nodes with j at 0 and x starting from 1 till N-2
+        for i in range(1,GRID_SIZE-1):
+            if (i,0) in key_list:
+                if (i,1) in neigbour_key_list:
+                    update_value = G * neigbour_key_list[(i,1)][2]
+                    node_dict[(i,0)][2] = update_value
+
+        #bottom top edge case --> get all nodes with j at 0 and x starting from 1 till N-2
+        for i in range(1,GRID_SIZE-1):
+            if (i,GRID_SIZE-1) in key_list:
+                if (i,GRID_SIZE-2) in neigbour_key_list:
+                    update_value = G * neigbour_key_list[(i,GRID_SIZE-2)][2]
+                    node_dict[(i,GRID_SIZE-1)][2] = update_value
+
+    elif(condition == "CENTER"):
+        #CENTER CASE
+        #All (i,j) pairs are
 
 if __name__ == "__main__":
 
@@ -97,4 +187,7 @@ if __name__ == "__main__":
         iterations -= 1
 
 
+    MPI.Finalize()
+
+    print 'END'
 
