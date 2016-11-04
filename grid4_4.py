@@ -25,6 +25,7 @@ G =	float(0.75)
 
 #Dict that will get received by each node. Will contain all neigbouring values with their i and j
 neigbour_nodes_and_their_values = {}
+dots_per_process = 0
 
 #Fills up all information necessary for node transactions
 #Each node will contain its position i j and an array with 4 variables
@@ -61,6 +62,120 @@ def fill_node_dict(dot_amount_per_process, rank):
                 else:
                     node_dict[(i, j)] = [0.0, 0.0, 0.0]
 
+#Returns the number of the node in 2D array starting from 0 to N-1*N-1
+def get_node_num(coord_tuple):
+    #eliminate the boundary conditions first
+    num = 0
+
+    if(coord_tuple[0] < 0 or coord_tuple[1]  < 0):
+        num = -1
+    elif(coord_tuple[0] >= GRID_SIZE or coord_tuple[0] >= GRID_SIZE):
+        num = -1
+    else:
+        rank_counter = -1
+        for j in range(0, GRID_SIZE):
+            for i in range(0, GRID_SIZE):
+                rank_counter += 1
+                if(coord_tuple[0]==i and coord_tuple[1]==j):
+                    num = rank_counter
+    return num
+
+
+#Returns the ranks of the process that contains the specified neighbor coordinate
+def get_neighbor_rank(coord_tuple, dots_per_process):
+    #eliminate the boundary conditions first
+    rank = 0
+
+    if(coord_tuple[0] < 0 or coord_tuple[1]  < 0):
+        rank = -1
+    elif(coord_tuple[0] >= GRID_SIZE or coord_tuple[0] >= GRID_SIZE):
+        rank = -1
+    else:
+        rank_counter = -1
+        for j in range(0, GRID_SIZE):
+            for i in range(0, GRID_SIZE):
+                rank_counter += 1
+                if(coord_tuple[0]==i and coord_tuple[1]==j):
+                    rank = rank_counter
+                    rank = rank/dots_per_process
+    return rank
+
+#Returns neigbour coordinate based on current coordinate
+# k ==>  0:left 1:right 2: up 3: down
+def get_neighbor_coord_based_on_current_coordinate(i,j,k):
+
+    neighbor_coordinate = (-1,-1)
+
+    if k == 0:
+        neighbor_coordinate = (i-1,j)
+    elif k == 1:
+        neighbor_coordinate = (i+1,j)
+    elif k == 2:
+        neighbor_coordinate = (i, j+1)
+    elif k == 3:
+        neighbor_coordinate = (i, j-1)
+
+    return neighbor_coordinate
+
+#Based on conditions verifies if the node provided the node number needs update
+#Returns true if update needed
+def check_if_needs_update(condition, node_number):
+
+    #CORNER CASE
+    if (node_number == 0 or node_number == GRID_SIZE - 1 or node_number == GRID_SIZE * (GRID_SIZE - 1) or node_number == ( GRID_SIZE * GRID_SIZE - 1)):
+        if(condition != "CORNER"):
+            return False
+    elif (node_number % GRID_SIZE == 0 or node_number % GRID_SIZE == GRID_SIZE - 1 or  node_number < GRID_SIZE or  node_number > GRID_SIZE * (GRID_SIZE - 1)):
+        if(condition != "EDGE"):
+            return False
+    else:
+        if(condition != "CENTER"):
+            return False
+    return True
+
+
+
+def exchange_data_with_neighbors(rank, buffer, operation=None, condition=None):
+
+    counter = 0
+    key_list = node_dict.keys()
+
+    for i in range (0, GRID_SIZE):
+        for j in range (0, GRID_SIZE):
+            if ((i,j) in key_list):
+                kcount = 0
+                #check for neighbors 0:left 1:right 2: up 3: down
+                for k in range (0,4):
+                    tag = 0
+                    #getting neighbors coordinate
+                    neighbour_coord = get_neighbor_coord_based_on_current_coordinate(i,j,k)
+
+                    if operation == 'send':
+                        #getting neighbors rank
+                        neighbour_rank = get_neighbor_rank(neighbour_coord,dots_per_process)
+
+                        #if not outside the grid and not same rank as current process
+                        #then send
+                        #Applies to one process per dot or many dots per process
+                        if ((neighbour_rank != -1) and (neighbour_rank != rank)):
+
+                            neighbour_node_num = get_node_num(neighbour_coord)
+
+                            if (check_if_needs_update(condition, neighbour_node_num) == False):
+                                continue
+                            #otherwise, the neighbour belongs to other process. Need to send.
+                            #get our own value and then send to the neighbor
+                            #send the previous value (t-1) value
+                            my_value_to_send = node_dict[(i,j)][1]
+                            my_tag = get_node_num((i,j))
+                            comm.send(my_value_to_send, dtype=np.float64, dest=neighbour_rank, tag=my_tag);
+                            counter += 1
+                    elif operation == 'recv':
+
+
+
+
+
 
 
 #simulation iteration method. Will update nodes and chose nodes based on condition provided
@@ -75,9 +190,9 @@ def simulate_iteration(condition = None):
         #RIGHT NEIGHBOURS i,j as key and their array with PREV-PREV, PREV, CURRENT values
     #depending on condition, there will be special cases (ex: corner cases)
 
-    #exchange data with neighbours code here (MPI)
+    exchange_data_with_neighbors(rank, {}, operation= 'send', condition = condition)
 
-    #receive data from neigbours code here (MPI)
+    exchange_data_with_neighbors(rank, neigbour_nodes_and_their_values,  operation = 'recv', condition = condition)
 
     #Now update depending on condition
     #get now list of all keys of nodes  that belong to process
@@ -173,6 +288,8 @@ def simulate_iteration(condition = None):
                     glorious_center_value = (RHO * (left_neigbour_prev_val + right_neighbour_prev_val + \
                             upper_neighbour_prev_val + lower_neighbour_prev_val - (4*node_dict[(i,j)][1])) + \
                             2*(node_dict[(i,j)][1]) - (1 - ETA)*(node_dict[(i,j)][0]))/(1-ETA)
+                    #update to most recent value
+                    node_dict[(i,j)][2] = glorious_center_value
 
 
 
