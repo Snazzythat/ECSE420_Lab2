@@ -97,7 +97,7 @@ def get_neighbor_rank(coord_tuple, dots_per_process):
                 rank_counter += 1
                 if(coord_tuple[0]==i and coord_tuple[1]==j):
                     rank = rank_counter
-                    rank = rank/dots_per_process
+                    rank = int(rank/dots_per_process)
     return rank
 
 #Returns neigbour coordinate based on current coordinate
@@ -142,22 +142,24 @@ def exchange_data_with_neighbors(rank, buffer, operation=None, condition=None):
 
     for i in range (0, GRID_SIZE):
         for j in range (0, GRID_SIZE):
+
             if ((i,j) in key_list):
                 kcount = 0
                 #check for neighbors 0:left 1:right 2: up 3: down
                 for k in range (0,4):
-                    tag = 0
+
                     #getting neighbors coordinate
                     neighbour_coord = get_neighbor_coord_based_on_current_coordinate(i,j,k)
 
+                    #SENDING TO NEIGHBORS
                     if operation == 'send':
-                        #getting neighbors rank
-                        neighbour_rank = get_neighbor_rank(neighbour_coord,dots_per_process)
+                        #Getting neighbors rank
+                        rank_of_neighbor_to_send_to = get_neighbor_rank(neighbour_coord,dots_per_process)
 
                         #if not outside the grid and not same rank as current process
                         #then send
                         #Applies to one process per dot or many dots per process
-                        if ((neighbour_rank != -1) and (neighbour_rank != rank)):
+                        if ((rank_of_neighbor_to_send_to != -1) and (rank_of_neighbor_to_send_to != rank)):
 
                             neighbour_node_num = get_node_num(neighbour_coord)
 
@@ -168,9 +170,39 @@ def exchange_data_with_neighbors(rank, buffer, operation=None, condition=None):
                             #send the previous value (t-1) value
                             my_value_to_send = node_dict[(i,j)][1]
                             my_tag = get_node_num((i,j))
-                            comm.send(my_value_to_send, dtype=np.float64, dest=neighbour_rank, tag=my_tag);
+                            #MPI SEND
+                            comm.send(my_value_to_send, dest=rank_of_neighbor_to_send_to, tag=my_tag);
                             counter += 1
+
+                    # RECEIVING FROM NEIGHBORS
                     elif operation == 'recv':
+                        rank_of_neighbor_to_receive_from = get_neighbor_rank(neighbour_coord,dots_per_process)
+                        # if not outside the grid and not same rank as current process
+                        # then receive
+                        # Applies to one process per dot or many dots per process
+                        if ((rank_of_neighbor_to_receive_from != -1) and (rank_of_neighbor_to_receive_from != rank)):
+
+                            my_node_number = get_node_num((i,j))
+                            if (check_if_needs_update(condition, my_node_number) == False):
+                                continue
+                            #otherwise we NEED update so need to receive from process
+                            neighbours_tag = get_node_num((neighbour_coord))
+                            value_to_receive = comm.recv(source =rank_of_neighbor_to_receive_from, tag = neighbours_tag)
+                            #updating neighbour dict with t-1 value of neighbour at (i,j)
+                            neigbour_dict_keys = neigbour_nodes_and_their_values.keys()
+
+                            #will create a new entry at first run if neighbour coordinate and value array is not
+                            #in neighbour dictionary yet
+                            if(not(neighbour_coord in neigbour_dict_keys)):
+                                neigbour_nodes_and_their_values[neighbour_coord] = [0.0,0.0,0.0]
+
+                            neigbour_nodes_and_their_values[neighbour_coord][1]=value_to_receive
+
+                        #Means those nodes belong to US (1 process with many dots). Simply distribute between neighbours
+                        #without MPI sending.
+                        elif rank_of_neighbor_to_receive_from == rank:
+                            value_to_receive = node_dict[neighbour_coord][1]
+
 
 
 
@@ -180,7 +212,7 @@ def exchange_data_with_neighbors(rank, buffer, operation=None, condition=None):
 
 #simulation iteration method. Will update nodes and chose nodes based on condition provided
 #default is non but specified from calls from main. Can be: EDGE, CENTER, CORNER
-def simulate_iteration(condition = None):
+def simulate_iteration(rank,condition = None):
 
     #All received values from the neighbours will be stored here
     #will always have 4 structures with  values in it:
@@ -192,7 +224,7 @@ def simulate_iteration(condition = None):
 
     exchange_data_with_neighbors(rank, {}, operation= 'send', condition = condition)
 
-    exchange_data_with_neighbors(rank, neigbour_nodes_and_their_values,  operation = 'recv', condition = condition)
+    exchange_data_with_neighbors(rank, {},  operation = 'recv', condition = condition)
 
     #Now update depending on condition
     #get now list of all keys of nodes  that belong to process
@@ -314,11 +346,11 @@ if __name__ == "__main__":
     # Then print the value at N/2 N/2 where strike was applied
     for iteration in range(0,iterations + 1):
 
-        simulate_iteration(condition = "CENTER")
+        simulate_iteration(rank,condition = "CENTER")
 
-        simulate_iteration(condition = "EDGE")
+        simulate_iteration(rank,condition = "EDGE")
 
-        simulate_iteration(condition = "CORNER")
+        simulate_iteration(rank,condition = "CORNER")
 
         print "I'm rank " + str(rank) + " and my grid dict is" + str(node_dict) + '\n\n'
 
