@@ -47,7 +47,7 @@ def fill_node_dict(dot_amount_per_process, rank):
                     rank_counter += 1
                     if rank_counter == rank:
                         if (i == GRID_SIZE/2) and (j == GRID_SIZE/2):
-                            node_dict[(i,j)] = [0.0, 0.0, 0.0]
+                            node_dict[(i,j)] = [0.0, 1.0, 0.0]
                         else:
                             node_dict[(i,j)] = [0.0, 0.0, 0.0]
     #case N=512
@@ -58,7 +58,7 @@ def fill_node_dict(dot_amount_per_process, rank):
         for j in range(beginning, end):
             for i in range(0, GRID_SIZE):
                 if (i == GRID_SIZE / 2) and (j == GRID_SIZE / 2):
-                    node_dict[(i, j)] = [0.0, 0.0, 0.0]
+                    node_dict[(i, j)] = [0.0, 1.0, 0.0]
                 else:
                     node_dict[(i, j)] = [0.0, 0.0, 0.0]
 
@@ -122,10 +122,10 @@ def get_neighbor_coord_based_on_current_coordinate(i,j,k):
 def check_if_needs_update(condition, node_number):
 
     #CORNER CASE
-    if (node_number == 0 or node_number == GRID_SIZE - 1 or node_number == GRID_SIZE * (GRID_SIZE - 1) or node_number == ( GRID_SIZE * GRID_SIZE - 1)):
+    if node_number == 0 or node_number == GRID_SIZE - 1 or node_number == GRID_SIZE * (GRID_SIZE - 1) or node_number == ( GRID_SIZE * GRID_SIZE - 1):
         if(condition != "CORNER"):
             return False
-    elif (node_number % GRID_SIZE == 0 or node_number % GRID_SIZE == GRID_SIZE - 1 or  node_number < GRID_SIZE or  node_number > GRID_SIZE * (GRID_SIZE - 1)):
+    elif (node_number % GRID_SIZE == 0) or (node_number % GRID_SIZE == GRID_SIZE - 1) or ( node_number < GRID_SIZE) or  (node_number > GRID_SIZE * (GRID_SIZE - 1)):
         if(condition != "EDGE"):
             return False
     else:
@@ -171,7 +171,8 @@ def exchange_data_with_neighbors(rank, buffer, operation=None, condition=None):
                             my_value_to_send = node_dict[(i,j)][1]
                             my_tag = get_node_num((i,j))
                             #MPI SEND
-                            comm.send(my_value_to_send, dest=rank_of_neighbor_to_send_to, tag=my_tag);
+                            comm.send(my_value_to_send, dest=rank_of_neighbor_to_send_to, tag=my_tag)
+                            print('I am rank ' + str(rank) + ' and I send to rank '+ str(rank_of_neighbor_to_send_to) + ' a value: ' + str(my_value_to_send))
                             counter += 1
 
                     # RECEIVING FROM NEIGHBORS
@@ -188,6 +189,7 @@ def exchange_data_with_neighbors(rank, buffer, operation=None, condition=None):
                             #otherwise we NEED update so need to receive from process
                             neighbours_tag = get_node_num((neighbour_coord))
                             value_to_receive = comm.recv(source =rank_of_neighbor_to_receive_from, tag = neighbours_tag)
+                            print('I am rank ' + str(rank) + ' and I received from rank '+ str(rank_of_neighbor_to_receive_from) + ' a value: ' + str(value_to_receive))
                             #updating neighbour dict with t-1 value of neighbour at (i,j)
                             neigbour_dict_keys = neigbour_nodes_and_their_values.keys()
 
@@ -202,11 +204,6 @@ def exchange_data_with_neighbors(rank, buffer, operation=None, condition=None):
                         #without MPI sending.
                         elif rank_of_neighbor_to_receive_from == rank:
                             value_to_receive = node_dict[neighbour_coord][1]
-
-
-
-
-
 
 
 
@@ -239,60 +236,149 @@ def simulate_iteration(rank,condition = None):
 
     neigbour_key_list = neigbour_nodes_and_their_values.keys()
 
+    #Also, update happens depending if the neighbor is in the neighbor dict or not. If it is, that means
+    #Those neighbors were sent via MPI
+    #Otherwise, the neighbor belongs to us. We can go and get the value directly from the node dict
+    #We do shift of T1 to T2 then T0 to T1 and then insert new value into T0
     if(condition == "CORNER"):
         #case upper left corner. depends on previous value of node i=1,j=0
         if (0,0) in key_list:
+
+            # shift first existing
+            node_dict[(0, 0)][0] = node_dict[(0, 0)][1]
+            node_dict[(0, 0)][1] = node_dict[(0, 0)][2]
+
+            # update the latest value based if the value came from MPI (in neigbors dict) or it is in same node_dict
             if ((1,0) in neigbour_key_list):
                 update_value = G * neigbour_nodes_and_their_values[(1,0)][2]
                 node_dict[(0,0)][2] = update_value
+                #if neighbor is not in neighbor_key_list that means it belongs to current process
+            else:
+                update_value = G * node_dict[(1,0)][2]
+                node_dict[(0, 0)][2] = update_value
 
         # case upper right corner. depends on previous value of node i=N-2,j=0
         elif (GRID_SIZE-1, 0) in key_list:
+
+            #shift first existing
+            node_dict[(GRID_SIZE - 1, 0)][0] = node_dict[(GRID_SIZE - 1, 0)][1]
+            node_dict[(GRID_SIZE - 1, 0)][1] = node_dict[(GRID_SIZE - 1, 0)][2]
+
+            # update the latest value based if the value came from MPI (in neigbors dict) or it is in same node_dict
             if ((GRID_SIZE-2, 0) in neigbour_key_list):
                 update_value = G * neigbour_nodes_and_their_values[(GRID_SIZE-2, 0)][2]
-                node_dict[(GRID_SIZE-1, 0)][2] = update_value
+                node_dict[(GRID_SIZE - 1, 0)][2] = update_value
+                # if neighbor is not in neighbor_key_list that means it belongs to current process
+            else:
+                update_value = G * node_dict[(GRID_SIZE - 2, 0)][2]
+                node_dict[(GRID_SIZE - 1, 0)][2] = update_value
 
         # case lower  left corner. depends on previous value of node i=0,j=N-2
         elif (0, GRID_SIZE-1) in key_list:
+
+            #shift first existing
+            node_dict[(0, GRID_SIZE - 1)][0] = node_dict[(0, GRID_SIZE - 1)][1]
+            node_dict[(0, GRID_SIZE - 1)][1] = node_dict[(0, GRID_SIZE - 1)][2]
+
+            # update the latest value based if the value came from MPI (in neigbors dict) or it is in same node_dict
             if ((0, GRID_SIZE-2) in neigbour_key_list):
                 update_value = G * neigbour_nodes_and_their_values[(0, GRID_SIZE-2)][2]
-                node_dict[(0,GRID_SIZE-1)][2] = update_value
+                node_dict[(0, GRID_SIZE - 1)][2] = update_value
+                # if neighbor is not in neighbor_key_list that means it belongs to current process
+            else:
+                update_value = G * node_dict[(0, GRID_SIZE - 2)][2]
+                node_dict[(0, GRID_SIZE - 1)][2] = update_value
+
 
         # case lower right corner. depends on previous value of node i=N-1,j=N-2
         elif (GRID_SIZE-1, GRID_SIZE-1) in key_list:
+
+            #shift first existing
+            node_dict[(GRID_SIZE - 1, GRID_SIZE - 1)][0] = node_dict[(GRID_SIZE - 1, GRID_SIZE - 1)][1]
+            node_dict[(GRID_SIZE - 1, GRID_SIZE - 1)][1] = node_dict[(GRID_SIZE - 1, GRID_SIZE - 1)][2]
+
+            # update the latest value based if the value came from MPI (in neigbors dict) or it is in same node_dict
             if ((GRID_SIZE-1, GRID_SIZE-2) in neigbour_key_list):
                 update_value = G * neigbour_nodes_and_their_values[(GRID_SIZE-1, GRID_SIZE-2)][2]
-                node_dict[(GRID_SIZE-1,GRID_SIZE-1)][2] = update_value
+                node_dict[(GRID_SIZE - 1, GRID_SIZE - 1)][2] = update_value
+            else:
+                # if neighbor is not in neighbor_key_list that means it belongs to current process
+                update_value = G * node_dict[(GRID_SIZE - 1, GRID_SIZE - 2)][2]
+                node_dict[(GRID_SIZE - 1, GRID_SIZE - 1)][2] = update_value
+
 
 
     elif(condition == "EDGE"):
         #left most edge case --> get all nodes with i at 0 and j starting from 1 till N-2
         for j in range(1,GRID_SIZE-1):
             if (0,j) in key_list:
+
+                #shift first existing, then update the latest value
+                node_dict[(0, j)][0] = node_dict[(0, j)][1]
+                node_dict[(0, j)][1] = node_dict[(0, j)][2]
+
+                #update the latest value based if the value came from MPI (in neigbors dict) or it is in same node_dict
                 if(1,j) in neigbour_key_list:
                     update_value = G * neigbour_nodes_and_their_values[(1,j)][2]
                     node_dict[(0,j)][2] = update_value
+                else:
+                    # if neighbor is not in neighbor_key_list that means it belongs to current process
+                    update_value = G * node_dict[(1, j)][2]
+                    node_dict[(0, j)][2] = update_value
+
 
         #right  most edge case --> get all nodes with i at N-1 j starting from 1 till N-2
         for j in range(1,GRID_SIZE-1):
             if (GRID_SIZE-1,j) in key_list:
+
+                #shift first existing, then update the latest value
+                node_dict[(GRID_SIZE - 1, j)][0] = node_dict[(GRID_SIZE-1,j)][1]
+                node_dict[(GRID_SIZE - 1, j)][1] = node_dict[(GRID_SIZE - 1, j)][2]
+
+                #update the latest value based if the value came from MPI (in neigbors dict) or it is in same node_dict
                 if (GRID_SIZE-2,j) in neigbour_key_list:
                     update_value = G * neigbour_nodes_and_their_values[(GRID_SIZE-2,j)][2]
                     node_dict[(GRID_SIZE-1,j)][2] = update_value
+                else:
+                    # if neighbor is not in neighbor_key_list that means it belongs to current process
+                    update_value = G * node_dict[(GRID_SIZE - 2, j)][2]
+                    node_dict[(GRID_SIZE - 1, j)][2] = update_value
+
 
         #right top edge case --> get all nodes with j at 0 and x starting from 1 till N-2
         for i in range(1,GRID_SIZE-1):
             if (i,0) in key_list:
+
+                #shift already existing, then update the latest value
+                node_dict[(i, 0)][0] = node_dict[(i, 0)][1]
+                node_dict[(i, 0)][1] = node_dict[(i, 0)][2]
+
+                #update the latest value based if the value came from MPI (in neigbors dict) or it is in same node_dict
                 if (i,1) in neigbour_key_list:
                     update_value = G * neigbour_nodes_and_their_values[(i,1)][2]
                     node_dict[(i,0)][2] = update_value
+                else:
+                    # if neighbor is not in neighbor_key_list that means it belongs to current process
+                    update_value = G * node_dict[(i, 1)][2]
+                    node_dict[(i, 0)][2] = update_value
 
         #bottom top edge case --> get all nodes with j at 0 and x starting from 1 till N-2
         for i in range(1,GRID_SIZE-1):
             if (i,GRID_SIZE-1) in key_list:
+
+                # shift already existing, then update the latest value
+                node_dict[(i, GRID_SIZE - 1)][0] = node_dict[(i,GRID_SIZE-1)][1]
+                node_dict[(i, GRID_SIZE - 1)][1] = node_dict[(i,GRID_SIZE-1)][2]
+
+                #update the latest value based if the value came from MPI (in neigbors dict) or it is in same node_dict
                 if (i,GRID_SIZE-2) in neigbour_key_list:
                     update_value = G * neigbour_nodes_and_their_values[(i,GRID_SIZE-2)][2]
                     node_dict[(i,GRID_SIZE-1)][2] = update_value
+                else:
+                    # if neighbor is not in neighbor_key_list that means it belongs to current process
+                    update_value = G * node_dict[(i, GRID_SIZE - 2)][2]
+                    node_dict[(i, GRID_SIZE - 1)][2] = update_value
+
 
     elif(condition == "CENTER"):
         #CENTER CASE
@@ -303,23 +389,42 @@ def simulate_iteration(rank,condition = None):
             for j in range(1,GRID_SIZE-1):
                 if(i,j) in key_list:
 
-                    left_neigbour_prev_val = 0
-                    right_neighbour_prev_val = 0
-                    lower_neighbour_prev_val = 0
-                    upper_neighbour_prev_val = 0
-                    #now treat every neighbour separately
-                    if(i-1,j) in neigbour_key_list:
-                        left_neigbour_prev_val = neigbour_nodes_and_their_values[(i-1,j)][1]
-                    if(i+1,j) in neigbour_key_list:
-                        right_neighbour_prev_val = neigbour_nodes_and_their_values[(i+1,j)][1]
-                    if(i, j-1) in neigbour_key_list:
-                        lower_neighbour_prev_val = neigbour_nodes_and_their_values[(i, j-1)][1]
-                    if(i, j+1) in neigbour_key_list:
-                        upper_neighbour_prev_val = neigbour_nodes_and_their_values[(i, j+1)][1]
+                    left_neighbor_prev_val = 0
+                    right_neighbor_prev_val = 0
+                    lower_neighbor_prev_val = 0
+                    upper_neighbor_prev_val = 0
+                    #now treat every neighbour separately. Same analogy as with corners and edges
+                    #if neighbor is in neighbor dict, that means we received it from MPI
+                    #otherwise, the neighbor is in node_dict (belongs to same rank process)
+                    #shift first existing
+                    node_dict[(i, j)][0] =  node_dict[(i, j)][1]
+                    node_dict[(i, j)][1] = node_dict[(i, j)][2]
 
-                    glorious_center_value = (RHO * (left_neigbour_prev_val + right_neighbour_prev_val + \
-                            upper_neighbour_prev_val + lower_neighbour_prev_val - (4*node_dict[(i,j)][1])) + \
+                    #then update the new value at present time
+                    if(i-1,j) in neigbour_key_list:
+                        left_neighbor_prev_val = neigbour_nodes_and_their_values[(i-1,j)][1]
+                    else:
+                        left_neighbor_prev_val = node_dict[(i - 1, j)][1]
+
+                    if(i+1,j) in neigbour_key_list:
+                        right_neighbor_prev_val = neigbour_nodes_and_their_values[(i+1,j)][1]
+                    else:
+                        right_neighbor_prev_val = node_dict[(i + 1, j)][1]
+
+                    if(i, j-1) in neigbour_key_list:
+                        lower_neighbor_prev_val = neigbour_nodes_and_their_values[(i, j-1)][1]
+                    else:
+                        lower_neighbor_prev_val = node_dict[(i, j - 1)][1]
+
+                    if(i, j+1) in neigbour_key_list:
+                        upper_neighbor_prev_val = neigbour_nodes_and_their_values[(i, j+1)][1]
+                    else:
+                        upper_neighbor_prev_val = node_dict[(i, j+1)][1]
+
+                    glorious_center_value = (RHO * (left_neighbor_prev_val + right_neighbor_prev_val +
+                            upper_neighbor_prev_val + lower_neighbor_prev_val - (4*node_dict[(i,j)][1])) +
                             2*(node_dict[(i,j)][1]) - (1 - ETA)*(node_dict[(i,j)][0]))/(1-ETA)
+
                     #update to most recent value
                     node_dict[(i,j)][2] = glorious_center_value
 
@@ -344,7 +449,7 @@ if __name__ == "__main__":
 
     # For each of iteration, do 3 updates. First center, then edges, then corners.
     # Then print the value at N/2 N/2 where strike was applied
-    for iteration in range(0,iterations + 1):
+    for iteration in range(0,iterations):
 
         simulate_iteration(rank,condition = "CENTER")
 
@@ -352,15 +457,16 @@ if __name__ == "__main__":
 
         simulate_iteration(rank,condition = "CORNER")
 
-        print "I'm rank " + str(rank) + " and my grid dict is" + str(node_dict) + '\n\n'
+        #print "I'm rank " + str(rank) + " and my grid dict is" + str(node_dict) + '\n\n'
 
         #STRIKE PRINT
+        #Only process that has it will print
         key_list = node_dict.keys()
         if((GRID_SIZE/2,GRID_SIZE/2) in key_list):
             #strike value is the value we get from node dict. The value is the array with n2,n1,n0. We display n0
             #the latest (current) strike value
             strike_value = node_dict[(GRID_SIZE/2,GRID_SIZE/2)][2]
-            print('Strike value at iteration ' + str(iteration) + ' is ' + str(strike_value))
+            print('Strike value at iteration ' + str(iteration) + ' is ' + str(strike_value) + "\n")
 
         iterations -= 1
 
