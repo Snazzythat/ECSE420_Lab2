@@ -130,7 +130,7 @@ int containsPoint(int row, int column){
 	int startIndex = getStartIndex();
 	int endIndex = getEndIndex();
 	int searchedIndex = row*GRID_SIZE + column;
-	if(startIndex<searchedIndex && searchedIndex<endIndex){
+	if(startIndex<=searchedIndex && searchedIndex<=endIndex){
 		return 1;
 	}else {
 		return -1;
@@ -203,11 +203,13 @@ void setNeighborNodesValuesInterior(int row, int column){
 	int topRowIndex = getTopRowIndex();
 	int bottomRowIndex = getBottomRowIndex();
 	if(row == topRowIndex){
-		//Grab top neighbor from top_neighbor_interior_nodes_values
+		//Grab top neighbor from top_neighbor_interior_nodes_values. Grab bottom neighbor from grid
 		neighbor_nodes_values[0] = top_neighbor_interior_nodes_values[column-1];
+		neighbor_nodes_values[2] = grid[row+1][column]->prev_value;
 	}else if(row == bottomRowIndex){
-		//Grab bottom neighbor from bottom_neighbor_interior_nodes_values
+		//Grab bottom neighbor from bottom_neighbor_interior_nodes_values. Grab top neighbor from grid
 		neighbor_nodes_values[2] = bottom_neighbor_interior_nodes_values[column-1];
+		neighbor_nodes_values[0] = grid[row-1][column]->prev_value;
 	}else{
 		//Grab top and bottom neighbor from same process (grid)
 		neighbor_nodes_values[0] = grid[row-1][column]->prev_value;
