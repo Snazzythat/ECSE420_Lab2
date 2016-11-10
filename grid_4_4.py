@@ -1,7 +1,7 @@
 #ECSE420
 #LAB2
 #ANDONI ROMAN
-#YORDAN NESHEV
+#EXTRA PYTHON IMPLEMENTATION OF 4x4 GRID
 
 #PYTHONIC DRUM 5.0
 
@@ -26,6 +26,7 @@ G =	float(0.75)
 #Dict that will get received by each node. Will contain all neigbouring values with their i and j
 neigbour_nodes_and_their_values = {}
 dots_per_process = 0
+a=10
 
 #Fills up all information necessary for node transactions
 #Each node will contain its position i j and an array with 4 variables
@@ -628,7 +629,7 @@ if __name__ == "__main__":
         if((GRID_SIZE/2,GRID_SIZE/2) in key_list):
             #strike value is the value we get from node dict. The value is the array with n2,n1,n0. We display n0
             #the latest (current) strike value
-            strike_value = node_dict[(GRID_SIZE/2,GRID_SIZE/2)][2]
+            strike_value = a*node_dict[(GRID_SIZE/2,GRID_SIZE/2)][2]
             output_string = str(strike_value)
             if iteration != iterations:
                 output_string = output_string + ','
