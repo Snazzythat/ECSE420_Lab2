@@ -35,8 +35,7 @@ int numberOfSlaves;
 int numberOfRowsToProcess;
 int offsetRows;
 
-
-
+//Setup the grid
 void setupGrid(){
 	int row;
 	int column;
@@ -69,6 +68,7 @@ int isInteriorNode(int row, int column){
 	}
 }
 
+//Split rows such that each process receives an amount of rows to process and their offset from 0
 void splitRows(int rank, int numberOfProcesses){
 	if(rank==0){
 		//Split rows and send them to all workers
@@ -89,6 +89,7 @@ void splitRows(int rank, int numberOfProcesses){
 	MPI_Recv(&offsetRows, 1, MPI_INT, 0, COMMUNICATE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 }
 
+//Should send or receive from/to top row
 int shouldTopRow(int rank){
 	if(rank==0){
 		return -1;
@@ -97,6 +98,7 @@ int shouldTopRow(int rank){
 	}
 }
 
+//Should send or receive from/to bottom row
 int shouldBottomRow(int rank, int numberOfProcesses){
 	if(numberOfProcesses<2){
 		return -1;
@@ -109,23 +111,28 @@ int shouldBottomRow(int rank, int numberOfProcesses){
 	}
 }
 
+//Get the index of the top row of the process
 int getTopRowIndex(){
 	return offsetRows;
 }
 
+//Get the index of the bottom row of the process
 int getBottomRowIndex(){
 	return offsetRows+numberOfRowsToProcess-1;
 }
 
+//Get the index of the first node in the process
 int getStartIndex(){
 	return offsetRows*GRID_SIZE;
 }
 
+//Get the index of the last node in the process
 int getEndIndex(){
 	int startIndex = getStartIndex();
 	return startIndex + numberOfRowsToProcess*GRID_SIZE - 1;
 }
 
+//Checks if the current process contains the node at row and column
 int containsPoint(int row, int column){
 	int startIndex = getStartIndex();
 	int endIndex = getEndIndex();
@@ -137,6 +144,7 @@ int containsPoint(int row, int column){
 	}
 }
 
+//Perform all the data exchanges (needed only for interior nodes)
 void performAllDataExchangesHelper(int rank, int numberOfProcesses, int operation){
 	int row;
 	int column;
@@ -191,12 +199,14 @@ void performAllDataExchanges(int rank, int numberOfProcesses){
 	performAllDataExchangesHelper(rank, numberOfProcesses, ANSWER_TAG);
 }
 
+//Set a new value to the node at row and column
 void setNewValue(float newValue, int row, int column){
 	grid[row][column]->prev_prev_value = grid[row][column]->prev_value;
 	grid[row][column]->prev_value = grid[row][column]->value;
 	grid[row][column]->value = newValue;
 }
 
+//Initialize the neighbors array with all the necessary values needed for the iteration for the node at row and column
 void setNeighborNodesValuesInterior(int row, int column){
 	//[0]=top [1]=right [2]=bottom [3]=left
 	int k;
@@ -293,7 +303,6 @@ void perform_iterationHelper(int rank, int operation, int numberOfProcesses){
 	MPI_Barrier(MPI_COMM_WORLD);
 }
 
-
 void shiftValues(){
 	int topRowIndex = getTopRowIndex();
 	int bottomRowIndex = getBottomRowIndex();
@@ -319,16 +328,11 @@ void printMiddleValue(int iteration, int rank){
 	//Print value at [GRID_SIZE/2,GRID_SIZE/2]
 	if(containsPoint(GRID_SIZE/2, GRID_SIZE/2)==1){
 		float midValue = grid[GRID_SIZE/2][GRID_SIZE/2]->value;
-		float error = (midValue - output[iteration])*(midValue - output[iteration]);
-		if(error < 0.00001){
-			//printf("%f\n", midValue);
-		}else{
-			//printf("0.000000\n");
-		}
 		printf("%f\n", midValue);
 	}
 }
 
+//Print the process info
 void printProcessInfo(int rank){
 	MPI_Barrier(MPI_COMM_WORLD);
 	//Send process info to master
@@ -355,8 +359,6 @@ void printProcessInfo(int rank){
 	MPI_Barrier(MPI_COMM_WORLD);
 }
 
-
-
 int main(int argc, char** argv) {
     // Initialize the MPI environment
     MPI_Init(&argc, &argv);
@@ -380,11 +382,11 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	
 	setupGrid();
+	splitRows(rank,numberOfProcesses);
 	
 	//If includeRank=1, also include rank values
 	//If includePrevValues=1, also include previous values
 	//printGrid(rank,0,0);
-	splitRows(rank,numberOfProcesses);
 	//printProcessInfo(rank);
 	
 	int iterations = atoi(argv[1]);

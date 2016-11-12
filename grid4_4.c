@@ -30,14 +30,10 @@ gridNode* grid[GRID_SIZE][GRID_SIZE];
 //[0]=top [1]=right [2]=bottom [3]=left
 float neighbor_nodes_values[4];
 int numberOfSlaves;
-//If printComment==1, then print some debug comments
-int printComments = -1;
 
 
 // Each node in the 4x4 grid is an independent process
 void setupGrid(int rank){
-	//Allocate memory to the global array of gridNode pointers (16 pointers)
-	//grid = malloc(sizeof(gridNode *) * GRID_SIZE * GRID_SIZE);
 	int row;
 	int column;
 	for (row=0;row<GRID_SIZE;row++){
@@ -47,7 +43,7 @@ void setupGrid(int rank){
 			
 			//Fill gridNodes
 			if(row == GRID_SIZE/2 && column == GRID_SIZE/2){
-				//Center node (Set prev_value to 1.0 to simulate a hit on the drum)
+				//Center node (Set value to 1.0 to simulate a hit on the drum, It will be shifted to prev_value before the iteration)
 				grid[row][column]->rank = rank;
 				grid[row][column]->value = 1.0;
 				grid[row][column]->prev_value = 0.0;
@@ -62,16 +58,19 @@ void setupGrid(int rank){
 	}
 }
 
+//Get the row number from the rank of the process
 int getRowFromRank(int rank) {
 	int row = floor(rank / GRID_SIZE);
 	return row;
 }
 
+//Get the column number from the rank of the process
 int getColumnFromRank(int rank) {
 	int column = rank % GRID_SIZE;
 	return column;
 }
 
+//Get the rank of the process from its row and column
 int getRankFromRowColumn(int row, int column){
 	if(row<0 || row>GRID_SIZE-1 || column<0 || column>GRID_SIZE-1){
 		//Wrong coordinates
@@ -269,6 +268,7 @@ void performDataExchangesForCorners(int rank){
 	performDataExchangesForCornersHelper(rank, ANSWER_TAG);
 }
 
+//Set a new value at row and column of the grid
 void setNewValue(float newValue, int row, int column){
 	grid[row][column]->prev_prev_value = grid[row][column]->prev_value;
 	grid[row][column]->prev_value = grid[row][column]->value;
@@ -347,7 +347,8 @@ void perform_iteration(int rank){
 void printMiddleValue(int iteration, int rank){
 	//Print value at [GRID_SIZE/2,GRID_SIZE/2]
 	if(rank==getRankFromRowColumn(GRID_SIZE/2, GRID_SIZE/2)){
-		printf("Iteration %d: %f\n", iteration, grid[GRID_SIZE/2][GRID_SIZE/2]->value);
+		//printf("Iteration %d: %f\n", iteration, grid[GRID_SIZE/2][GRID_SIZE/2]->value);
+		printf("%f\n", grid[GRID_SIZE/2][GRID_SIZE/2]->value);
 	}
 }
 
@@ -446,14 +447,14 @@ int main(int argc, char** argv) {
 	
 	//If includeRank=1, also include rank values
 	//If includePrevValues=1, also include previous values
-	printGrid(rank,0,0);
+	//printGrid(rank,0,0);
 	//printProcessInfo(rank);
 	
 	int iterations = atoi(argv[1]);
 	int i;
 	for(i=1;i<=iterations;i++){
 		perform_iteration(rank);
-		printGrid(rank,0,0);
+		//printGrid(rank,0,0);
 		printMiddleValue(i, rank);
 		//printProcessInfo(rank);
 	}
